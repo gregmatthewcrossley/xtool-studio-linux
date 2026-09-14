@@ -238,6 +238,34 @@ perception stack.
 
 ---
 
+## Related projects
+
+Other people have attacked this too, and it is worth knowing what else exists
+before picking an approach.
+
+- **[bod09/xtool-studio-fedora](https://github.com/bod09/xtool-studio-fedora)** —
+  a Fedora-specific Wine installer. It arrived at the same
+  `$PLUGINSDIR/app-64.7z` extraction independently, which is reassuring, and it
+  goes further than this repo on desktop polish: selectable GPU backend, DPI
+  scaling and esync/fsync toggles. Its scope is narrower in one way — it installs
+  the distro's Wine via `dnf` with no version check and does not install
+  corefonts, which are the two things documented in
+  [Why stock Wine fails](#why-stock-wine-fails). If you are on Fedora and want
+  the extra display tuning, read both.
+
+- **[sh4un-dot-com/xTool-Studio-CachyBox](https://github.com/sh4un-dot-com/xTool-Studio-CachyBox)** —
+  runs xTool Studio inside an Ubuntu 24.04 Distrobox container. A reasonable
+  alternative if you would rather isolate the whole thing than manage a Wine
+  prefix on your host.
+
+- **[xtool-creative-space (AUR)](https://aur.archlinux.org/packages/xtool-creative-space)** —
+  packages the older XCS rather than Studio.
+
+Not to be confused with **[xtool-org/xtool](https://github.com/xtool-org/xtool)**,
+an unrelated project of the same short name — a cross-platform Xcode replacement.
+
+---
+
 ## Contributing
 
 Most wanted:
