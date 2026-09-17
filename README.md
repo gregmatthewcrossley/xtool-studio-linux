@@ -42,6 +42,11 @@ contribution to this repo.
 - A 64-bit Linux system with a working X11 or XWayland session.
 - Wine **11.5 or newer**. If your distro's Wine is older, `install.sh` offers to
   download a self-contained build; nothing is installed system-wide.
+- A working **Vulkan** driver. The editor canvas is WebGL, and under Wine the
+  only backend that delivers it is ANGLE-on-Vulkan; without one the app still
+  opens but the workspace stays blank. `install.sh` warns if it finds no driver.
+  Most distros install one with the GPU driver — verify with `vulkaninfo
+  --summary`.
 - About **4 GB** of free disk space (1.3 GB app, ~1.5 GB Wine prefix, plus the
   installer and a downloaded Wine build if needed).
 - The official Windows installer, `xTool-Studio-x64-<version>.exe`, from
@@ -109,6 +114,39 @@ distro — your desktop session is granted access to `/dev/ttyUSB*` and
 `/dev/ttyACM*` through a uaccess ACL. Check with `getfacl /dev/ttyACM0`. Wine
 maps those devices to COM ports automatically at startup; no manual mapping is
 needed.
+
+### Logs and debugging
+
+The launcher redirects all output to
+`~/.local/share/xtool-studio/logs/xtool-studio.log`, keeping the previous run as
+`.log.1`. It is chatty — roughly 14k lines a launch.
+
+That redirect **must** point at a regular file. Node, inside Electron, cannot
+wrap a pipe or a socket as `process.stderr` under Wine: `new Socket({fd:2})`
+fails with `EBADF`. Node initialises stderr lazily, so this only fires when the
+app has an error to report — and the `EBADF` then *replaces* that error with a
+modal "A JavaScript error occurred in the main process" dialog, hiding the
+message you actually needed. Launching from the desktop entry hands stdio a
+journald socket, and `| tee` hands it a pipe; both break. A regular file makes
+Node pick `fs.SyncWriteStream`, which works. Chromium's own C++ writes to fd 2
+succeed either way — only the Node layer breaks.
+
+So if that dialog appears, stdio is wrong and the real error is whatever it is
+hiding. Never debug this app by piping its output:
+
+```bash
+xtool-studio                                          # correct
+xtool-studio 2>&1 | tee /tmp/x.log                    # breaks, hides errors
+```
+
+Killing the app can leave orphaned GPU child processes behind. Before testing a
+clean start:
+
+```bash
+pkill -9 -f 'xTool[ ]Studio'
+```
+
+(The `[ ]` keeps the pattern from matching the `pkill` command line itself.)
 
 ## Uninstall
 
@@ -188,14 +226,31 @@ not need anyway.
 
 ### Flags the launcher passes
 
-Only `--no-sandbox`, which Electron needs under Wine.
+Two, and both are load-bearing.
 
-Several commonly-recommended Chromium-under-Wine flags turned out to be
-unnecessary once the real problem was fixed, and one is actively harmful:
-`--use-angle=gl` fails outright with `WGL_NV_DX_interop2 is required but not
-present`. `--disable-gpu`, `--in-process-gpu` and
-`--disable-features=CalculateNativeWinOcclusion` change nothing here. If you are
-debugging, try the plain launcher before adding flags.
+`--no-sandbox`, which Electron needs under Wine.
+
+`--use-angle=vulkan`, without which **starting a new project opens a blank
+workspace**. The editor canvas is PixiJS on WebGL. Left to itself ANGLE picks
+its D3D11 backend, which Wine cannot service: `direct_composition` calls fail,
+the GPU process dies three times per launch with `STATUS_BREAKPOINT`
+(`exit_code=-2147483645`), and the renderer is left with no WebGL at all.
+Chromium has since removed the silent auto-fallback to software WebGL, so
+instead of degrading to a slow canvas, PixiJS throws `WebGL unsupported in this
+browser` and paints nothing. The app itself opens normally, which makes this
+look like a bug in the workspace rather than in the GPU stack. Routing ANGLE
+through `winevulkan` fixes it outright — on an NVIDIA RTX 3090 (driver
+595.91.07) it takes the GPU-process crashes and the `direct_composition` errors
+from three and five per launch to zero each.
+
+Do **not** substitute `--use-angle=gl`. On Windows builds that backend bridges
+GL and D3D surfaces via the `WGL_NV_DX_interop2` extension, which Wine's
+`opengl32` does not expose; ANGLE then fails every EGL display type with
+`EGL_NOT_INITIALIZED` and the app black-screens entirely. The flag name is
+misleading — it does not mean "use desktop OpenGL".
+
+`--disable-gpu`, `--in-process-gpu` and
+`--disable-features=CalculateNativeWinOcclusion` change nothing here.
 
 ---
 

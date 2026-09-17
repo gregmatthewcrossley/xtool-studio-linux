@@ -179,6 +179,36 @@ export WINEPREFIX="$PREFIX"
 export WINEARCH=win64
 export WINEDEBUG=-all
 
+# ---------------------------------------------------------------------- vulkan
+
+# The launcher passes --use-angle=vulkan. Without it ANGLE falls back to its
+# D3D11 backend, which Wine cannot service, and the renderer ends up with no
+# WebGL at all -- the app opens fine but a new project shows a blank workspace.
+# That needs a host Vulkan driver plus Wine's winevulkan. Warn rather than fail:
+# everything except the editor canvas still works.
+check_vulkan() {
+	local d found=0
+	for d in /usr/share/vulkan/icd.d /etc/vulkan/icd.d \
+	         /usr/local/share/vulkan/icd.d "$HOME/.local/share/vulkan/icd.d"; do
+		if [ -d "$d" ] && [ -n "$(ls -1 "$d"/*.json 2>/dev/null)" ]; then
+			found=1
+			break
+		fi
+	done
+
+	if [ "$found" -eq 0 ]; then
+		warn "no Vulkan driver (ICD) found; the workspace canvas will stay blank."
+		warn "  Install your GPU vendor's Vulkan driver, then re-run this script."
+		warn "  (Fedora, Mesa GPUs: sudo dnf install vulkan-loader mesa-vulkan-drivers)"
+		return
+	fi
+
+	if ! ls "$WINE_ROOT"/lib*/wine/x86_64-windows/winevulkan.dll >/dev/null 2>&1; then
+		warn "this Wine build ships no winevulkan.dll; the workspace may stay blank."
+	fi
+}
+check_vulkan
+
 # ----------------------------------------------------------------- wine prefix
 
 info "Preparing Wine prefix at $PREFIX"
@@ -233,12 +263,41 @@ cat > "$BIN_DIR/$SLUG" <<EOF
 #
 # Wine maps /dev/ttyUSB* and /dev/ttyACM* to COM ports by itself; no manual
 # serial mapping is needed here.
+#
+# stdio MUST go to a regular file -- see the redirect on the exec line below.
+# Node (inside Electron) cannot wrap a pipe or a socket as process.stderr under
+# Wine: new Socket({fd:2}) fails with EBADF. Because Node initialises stderr
+# lazily, this only bites when the app has an error to report, and it then
+# replaces that error with a modal "A JavaScript error occurred in the main
+# process" dialog -- hiding the very message you need. Launching from the
+# desktop entry gives stdio a journald socket and '| tee' gives it a pipe; both
+# fail. A regular file makes Node pick fs.SyncWriteStream instead, which works.
+# So: keep '>', never '| tee', and never drop the redirect.
+#
+# --use-angle=vulkan is load-bearing for the workspace canvas. Without it ANGLE
+# picks its D3D11 backend, which Wine cannot service: direct_composition fails,
+# the GPU process dies 3x per launch with STATUS_BREAKPOINT
+# (exit_code=-2147483645), and the renderer is left with no WebGL at all.
+# Chromium removed the silent auto-fallback to software WebGL, so PixiJS throws
+# "WebGL unsupported in this browser" and the editor canvas paints nothing --
+# the app opens fine, but starting a new project shows a blank workspace.
+# Routing ANGLE through winevulkan instead gives real GPU-backed WebGL.
+#
+# Do NOT substitute --use-angle=gl: on Windows builds that backend needs the
+# WGL_NV_DX_interop2 extension, which Wine's opengl32 does not expose, and the
+# app black-screens entirely.
 export WINEPREFIX="$PREFIX"
 export WINEDEBUG="\${WINEDEBUG:-fixme-all,err-all}"
 export PATH="$WINE_ROOT/bin:\$PATH"
 
+# One previous run is kept as .1 -- the log is chatty (~14k lines a launch).
+LOG_DIR="\$HOME/.local/share/$SLUG/logs"
+LOG="\$LOG_DIR/$SLUG.log"
+mkdir -p "\$LOG_DIR"
+[ -f "\$LOG" ] && mv -f "\$LOG" "\$LOG.1"
+
 cd "$APPDIR" || exit 1
-exec "$WINE" "$APP_NAME.exe" --no-sandbox "\$@"
+exec "$WINE" "$APP_NAME.exe" --no-sandbox --use-angle=vulkan "\$@" > "\$LOG" 2>&1
 EOF
 chmod +x "$BIN_DIR/$SLUG"
 info "Launcher: $BIN_DIR/$SLUG"

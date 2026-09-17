@@ -35,7 +35,13 @@ while [ $# -gt 0 ]; do
 done
 
 targets=("$BIN" "$DESKTOP" "$ICON" "$PREFIX")
-[ "$KEEP_WINE" -eq 1 ] || targets+=("$SUPPORT_DIR")
+if [ "$KEEP_WINE" -eq 1 ]; then
+	# --keep-wine keeps the downloaded Wine build, which lives in SUPPORT_DIR
+	# alongside the launcher logs. The logs are ours, so drop them regardless.
+	targets+=("$SUPPORT_DIR/logs")
+else
+	targets+=("$SUPPORT_DIR")
+fi
 
 echo "This will permanently delete:"
 for t in "${targets[@]}"; do
