@@ -65,21 +65,96 @@ done
 
 # ---------------------------------------------------------------- dependencies
 
-need_cmd() {
-	command -v "$1" >/dev/null 2>&1 || die "missing required command: $1${2:+  (Fedora: sudo dnf install $2)}"
+SEVENZIP=""
+
+detect_pkg_mgr() {
+	if command -v apt-get >/dev/null 2>&1; then
+		echo "apt"
+	elif command -v dnf >/dev/null 2>&1; then
+		echo "dnf"
+	elif command -v pacman >/dev/null 2>&1; then
+		echo "pacman"
+	fi
 }
 
-# 7-Zip is packaged under several names depending on distro and version.
-SEVENZIP=""
-for c in 7z 7zz 7za; do
-	if command -v "$c" >/dev/null 2>&1; then SEVENZIP="$c"; break; fi
-done
-[ -n "$SEVENZIP" ] || die "missing required command: 7z  (Fedora: sudo dnf install p7zip)"
+pkg_for_cmd() {
+	local mgr="$1" cmd="$2"
+	case "$mgr:$cmd" in
+		apt:7z)
+			if apt-cache show 7zip >/dev/null 2>&1 || ! apt-cache show p7zip-full >/dev/null 2>&1; then
+				echo "7zip"
+			else
+				echo "p7zip-full"
+			fi
+			;;
+		dnf:7z|pacman:7z) echo "p7zip" ;;
+		*) echo "$cmd" ;;
+	esac
+}
 
-need_cmd winetricks winetricks
-need_cmd cabextract cabextract   # winetricks needs this to unpack the font cabs
-need_cmd curl curl
-need_cmd tar tar
+check_dependencies() {
+	local missing_cmds=()
+	local c
+	for c in 7z 7zz 7za; do
+		if command -v "$c" >/dev/null 2>&1; then
+			SEVENZIP="$c"
+			break
+		fi
+	done
+	[ -n "$SEVENZIP" ] || missing_cmds+=("7z")
+
+	local cmd
+	for cmd in winetricks cabextract curl tar; do
+		command -v "$cmd" >/dev/null 2>&1 || missing_cmds+=("$cmd")
+	done
+
+	[ "${#missing_cmds[@]}" -eq 0 ] && return 0
+
+	local mgr pkg_list=() install_cmd=()
+	mgr="$(detect_pkg_mgr || true)"
+	for cmd in "${missing_cmds[@]}"; do
+		pkg_list+=("$(pkg_for_cmd "$mgr" "$cmd")")
+	done
+
+	case "$mgr" in
+		apt)    install_cmd=(sudo apt install -y "${pkg_list[@]}") ;;
+		dnf)    install_cmd=(sudo dnf install -y "${pkg_list[@]}") ;;
+		pacman) install_cmd=(sudo pacman -S --needed "${pkg_list[@]}") ;;
+	esac
+
+	warn "Missing required command(s): ${missing_cmds[*]}"
+	if [ "${#install_cmd[@]}" -gt 0 ]; then
+		printf '    Install with: %s\n' "${install_cmd[*]}" >&2
+		if [ -t 0 ] && [ -t 1 ]; then
+			local reply
+			printf 'Install missing packages now? [y/N] ' >&2
+			read -r reply
+			case "$reply" in
+				[yY]|[yY][eE][sS])
+					"${install_cmd[@]}" || die "package installation failed"
+					SEVENZIP=""
+					for c in 7z 7zz 7za; do
+						if command -v "$c" >/dev/null 2>&1; then
+							SEVENZIP="$c"
+							break
+						fi
+					done
+					[ -n "$SEVENZIP" ] || die "missing required command: 7z"
+					for cmd in winetricks cabextract curl tar; do
+						command -v "$cmd" >/dev/null 2>&1 || die "missing required command: $cmd"
+					done
+					return 0
+					;;
+			esac
+		fi
+	else
+		printf '    Install %s using your distribution package manager.\n' "${missing_cmds[*]}" >&2
+	fi
+
+	die "missing required dependencies: ${missing_cmds[*]}"
+}
+
+check_dependencies
 
 # Optional: only used to give the desktop entry a real icon.
 HAVE_ICOTOOLS=0
@@ -199,7 +274,12 @@ check_vulkan() {
 	if [ "$found" -eq 0 ]; then
 		warn "no Vulkan driver (ICD) found; the workspace canvas will stay blank."
 		warn "  Install your GPU vendor's Vulkan driver, then re-run this script."
-		warn "  (Fedora, Mesa GPUs: sudo dnf install vulkan-loader mesa-vulkan-drivers)"
+		case "$(detect_pkg_mgr || true)" in
+			apt)    warn "  (Debian/Ubuntu, Mesa GPUs: sudo apt install -y mesa-vulkan-drivers)" ;;
+			dnf)    warn "  (Fedora, Mesa GPUs: sudo dnf install vulkan-loader mesa-vulkan-drivers)" ;;
+			pacman) warn "  (Arch, Mesa GPUs: sudo pacman -S vulkan-icd-loader)" ;;
+			*)      warn "  (Fedora, Mesa GPUs: sudo dnf install vulkan-loader mesa-vulkan-drivers)" ;;
+		esac
 		return
 	fi
 

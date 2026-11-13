@@ -16,9 +16,12 @@ inside Wine's builtin `DWrite.dll`. Details in
 
 ## Status
 
-Tested on Fedora 44 (KDE, Wayland/XWayland, NVIDIA proprietary driver) with
-xTool Studio 1.9.11 (Electron 36.2.0), under both Wine 11.5 (wine-tkg) and Wine
-11.17 (Kron4ek staging — the build `install.sh` fetches by default).
+Tested on:
+- Fedora 44 (KDE, Wayland/XWayland, NVIDIA proprietary driver) with
+  xTool Studio 1.9.11 (Electron 36.2.0), under both Wine 11.5 (wine-tkg) and Wine
+  11.17 (Kron4ek staging — the build `install.sh` fetches by default).
+- Ubuntu 26.04 (GNOME, Wayland/XWayland, AMD Radeon 860M / Mesa RADV) with
+  xTool Studio 1.10.15 (Electron 36.2.0) under Wine 11.17 (Kron4ek staging).
 
 | | |
 |---|---|
@@ -58,8 +61,8 @@ Packages:
 # Fedora
 sudo dnf install p7zip winetricks cabextract icoutils curl
 
-# Debian / Ubuntu
-sudo apt install p7zip-full winetricks cabextract icoutils curl
+# Debian / Ubuntu (use `p7zip-full` on older releases without `7zip`)
+sudo apt install 7zip winetricks cabextract icoutils curl
 
 # Arch
 sudo pacman -S p7zip winetricks cabextract icoutils curl
