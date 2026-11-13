@@ -28,15 +28,14 @@ Tested on:
 | Application launches | ✅ verified |
 | Full UI renders, fonts correct | ✅ verified |
 | Projects, workspace, material settings | ✅ verified |
-| Network device-discovery routine runs | ✅ verified (no machine attached to find) |
-| Actually connecting to a machine | ⚠️ **untested** |
-| Running a job / engraving | ⚠️ **untested** |
-| Camera / auto-positioning features | ⚠️ **untested** |
+| Network device-discovery routine runs | ✅ verified |
+| Actually connecting to a machine | ✅ verified (xTool P3 over Wi-Fi; USB untested) |
+| Running a job / engraving | ✅ verified (xTool P3 cut jobs) |
+| Camera / auto-positioning & monitoring | ✅ verified (xTool P3) |
 
-The unverified rows are unverified because no machine was connected when this
-was written — not because they are known broken. **If you try any of them,
-please open an issue and say what happened.** That is the single most useful
-contribution to this repo.
+USB machine connections and other hardware models remain untested here — **if
+you try them, please open an issue and say what happened.** That is the single
+most useful contribution to this repo.
 
 ---
 
@@ -331,8 +330,7 @@ an unrelated project of the same short name — a cross-platform Xcode replaceme
 
 Most wanted:
 
-- Reports of the ⚠️ rows in [Status](#status) — whether a machine actually
-  connects, and whether jobs run.
+- Reports of USB connections or other machine models in [Status](#status).
 - Confirmation on other distros.
 - A narrower lower bound than 11.5, if one of 11.1–11.4 works.
 - Whether a newer Fedora Wine, once it lands, makes the download unnecessary.
