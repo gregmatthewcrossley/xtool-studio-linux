@@ -156,12 +156,6 @@ check_dependencies() {
 
 check_dependencies
 
-# Optional: only used to give the desktop entry a real icon.
-HAVE_ICOTOOLS=0
-if command -v wrestool >/dev/null 2>&1 && command -v icotool >/dev/null 2>&1; then
-	HAVE_ICOTOOLS=1
-fi
-
 # ------------------------------------------------------------------- installer
 
 if [ -z "$EXE" ]; then
@@ -392,25 +386,129 @@ info "Launcher: $BIN_DIR/$SLUG"
 
 # ------------------------------------------------------------------------ icon
 
-ICON_NAME="$SLUG"
-if [ "$HAVE_ICOTOOLS" -eq 1 ]; then
-	mkdir -p "$ICON_DIR"
-	if wrestool -x -t 14 "$APPDIR/$APP_NAME.exe" > "$TMPD/app.ico" 2>/dev/null \
-		&& [ -s "$TMPD/app.ico" ] \
-		&& icotool -x -i 1 -o "$ICON_DIR/$ICON_NAME.png" "$TMPD/app.ico" 2>/dev/null; then
-		:
-	else
-		warn "could not extract the application icon; using a generic one"
-		ICON_NAME="application-x-executable"
+ico_to_png_py() {
+	python3 - "$1" "$2" <<'PY'
+import struct, sys, zlib
+
+ico_path, out_path = sys.argv[1], sys.argv[2]
+with open(ico_path, "rb") as f:
+    data = f.read()
+
+if len(data) < 6:
+    sys.exit(1)
+reserved, typ, count = struct.unpack("<HHH", data[:6])
+if reserved != 0 or typ != 1 or count < 1 or len(data) < 6 + count * 16:
+    sys.exit(1)
+
+entries = []
+for i in range(count):
+    w, h, _, _, _, bpp, size, offset = struct.unpack("<BBBBHHII", data[6 + i * 16 : 22 + i * 16])
+    w = w or 256
+    h = h or 256
+    if offset + size <= len(data):
+        entries.append((w * h, bpp, w, h, data[offset : offset + size]))
+
+if not entries:
+    sys.exit(1)
+
+entries.sort(key=lambda e: (e[0], e[1]), reverse=True)
+_, _, w, h, payload = entries[0]
+
+if payload.startswith(b"\x89PNG\r\n\x1a\n"):
+    with open(out_path, "wb") as f:
+        f.write(payload)
+    sys.exit(0)
+
+if len(payload) < 40:
+    sys.exit(1)
+bi_size, bw, bh_dbl, _, bpp, comp = struct.unpack("<IiiHHI", payload[:20])
+if bi_size < 40 or bpp != 32 or comp != 0:
+    sys.exit(1)
+
+bh = abs(bh_dbl) // 2 if bh_dbl == bw * 2 else abs(bh_dbl)
+if bw <= 0 or bh <= 0 or len(payload) < bi_size + bw * bh * 4:
+    sys.exit(1)
+
+px = payload[bi_size : bi_size + bw * bh * 4]
+row_range = range(bh - 1, -1, -1) if bh_dbl > 0 else range(bh)
+rows = []
+for y in row_range:
+    row = bytearray(b"\x00")
+    base = y * bw * 4
+    for x in range(bw):
+        b, g, r, a = px[base + x * 4 : base + x * 4 + 4]
+        row.extend((r, g, b, a))
+    rows.append(bytes(row))
+
+def chunk(tag, body):
+    return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF)
+
+ihdr = struct.pack(">IIBBBBB", bw, bh, 8, 6, 0, 0, 0)
+png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b"")
+with open(out_path, "wb") as f:
+    f.write(png)
+PY
+}
+
+extract_app_icon() {
+	local exe_path="$1"
+	local out_png="$2"
+	local ico_file=""
+
+	mkdir -p "$TMPD/icon"
+	"$SEVENZIP" e -y -bso0 -bsp0 -o"$TMPD/icon" -- "$exe_path" '.rsrc/*/ICON/*' >/dev/null 2>&1 || true
+	ico_file="$(ls -1S "$TMPD/icon"/*.ico 2>/dev/null | head -1 || true)"
+
+	if [ -z "$ico_file" ] && command -v wrestool >/dev/null 2>&1; then
+		if wrestool -x -t 14 "$exe_path" > "$TMPD/app.ico" 2>/dev/null && [ -s "$TMPD/app.ico" ]; then
+			ico_file="$TMPD/app.ico"
+		fi
 	fi
+
+	[ -n "$ico_file" ] && [ -s "$ico_file" ] || return 1
+
+	if command -v python3 >/dev/null 2>&1 && ico_to_png_py "$ico_file" "$out_png" 2>/dev/null && [ -s "$out_png" ]; then
+		return 0
+	fi
+
+	if command -v icotool >/dev/null 2>&1; then
+		mkdir -p "$TMPD/ico_pngs"
+		if icotool -x -o "$TMPD/ico_pngs" "$ico_file" >/dev/null 2>&1; then
+			local best_png
+			best_png="$(ls -1S "$TMPD/ico_pngs"/*.png 2>/dev/null | head -1 || true)"
+			if [ -n "$best_png" ] && [ -s "$best_png" ]; then
+				cp -f "$best_png" "$out_png"
+				return 0
+			fi
+		fi
+	fi
+
+	local im_cmd=""
+	if command -v magick >/dev/null 2>&1; then
+		im_cmd="magick"
+	elif command -v convert >/dev/null 2>&1; then
+		im_cmd="convert"
+	fi
+	if [ -n "$im_cmd" ] && "$im_cmd" "${ico_file}[0]" "$out_png" >/dev/null 2>&1 && [ -s "$out_png" ]; then
+		return 0
+	fi
+
+	return 1
+}
+
+mkdir -p "$ICON_DIR"
+ICON_PATH="$ICON_DIR/$SLUG.png"
+if extract_app_icon "$APPDIR/$APP_NAME.exe" "$ICON_PATH"; then
+	ICON_VALUE="$ICON_PATH"
+	info "Icon: $ICON_PATH"
 else
-	warn "icoutils not installed; desktop entry will use a generic icon"
-	warn "  (Fedora: sudo dnf install icoutils)"
-	ICON_NAME="application-x-executable"
+	warn "could not extract the application icon; using a generic one"
+	ICON_VALUE="application-x-executable"
 fi
 
 # --------------------------------------------------------------- desktop entry
 
+WM_CLASS="$(printf '%s.exe' "$APP_NAME" | tr '[:upper:]' '[:lower:]')"
 mkdir -p "$DESKTOP_DIR"
 cat > "$DESKTOP_DIR/$SLUG.desktop" <<EOF
 [Desktop Entry]
@@ -418,10 +516,10 @@ Type=Application
 Name=$APP_NAME
 Comment=xTool laser/CNC software (Windows build running under Wine)
 Exec=$BIN_DIR/$SLUG
-Icon=$ICON_NAME
+Icon=$ICON_VALUE
 Terminal=false
 Categories=Graphics;Engineering;
-StartupWMClass=xtool studio.exe
+StartupWMClass=$WM_CLASS
 EOF
 update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true

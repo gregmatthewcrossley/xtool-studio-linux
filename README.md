@@ -62,16 +62,16 @@ Packages:
 sudo dnf install p7zip winetricks cabextract icoutils curl
 
 # Debian / Ubuntu (use `p7zip-full` on older releases without `7zip`)
-sudo apt install 7zip winetricks cabextract icoutils curl
+sudo apt install 7zip winetricks cabextract curl
 
 # Arch
-sudo pacman -S p7zip winetricks cabextract icoutils curl
+sudo pacman -S p7zip winetricks cabextract curl
 ```
 
-`icoutils` is optional — without it you get a generic icon instead of xTool's.
-`install.sh` also disables Wine's X11 window-manager borders (`Decorated=N` in
-`HKCU\Software\Wine\X11 Driver`) so Electron's custom title bar does not collide
-with GNOME/Mutter decorations.
+`install.sh` extracts the desktop icon via `7z` and `python3` (falling back to
+`icoutils` or ImageMagick if needed). `install.sh` also disables Wine's X11
+window-manager borders (`Decorated=N` in `HKCU\Software\Wine\X11 Driver`) so
+Electron's custom title bar does not collide with GNOME/Mutter decorations.
 
 ---
 
