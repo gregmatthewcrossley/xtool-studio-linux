@@ -16,24 +16,26 @@ inside Wine's builtin `DWrite.dll`. Details in
 
 ## Status
 
-Tested on Fedora 44 (KDE, Wayland/XWayland, NVIDIA proprietary driver) with
-xTool Studio 1.9.11 (Electron 36.2.0), under both Wine 11.5 (wine-tkg) and Wine
-11.17 (Kron4ek staging — the build `install.sh` fetches by default).
+Tested on:
+- Fedora 44 (KDE, Wayland/XWayland, NVIDIA proprietary driver) with
+  xTool Studio 1.9.11 (Electron 36.2.0), under both Wine 11.5 (wine-tkg) and Wine
+  11.17 (Kron4ek staging — the build `install.sh` fetches by default).
+- Ubuntu 26.04 (GNOME, Wayland/XWayland, AMD Radeon 860M / Mesa RADV) with
+  xTool Studio 1.10.15 (Electron 36.2.0) under Wine 11.17 (Kron4ek staging).
 
 | | |
 |---|---|
 | Application launches | ✅ verified |
 | Full UI renders, fonts correct | ✅ verified |
 | Projects, workspace, material settings | ✅ verified |
-| Network device-discovery routine runs | ✅ verified (no machine attached to find) |
-| Actually connecting to a machine | ⚠️ **untested** |
-| Running a job / engraving | ⚠️ **untested** |
-| Camera / auto-positioning features | ⚠️ **untested** |
+| Network device-discovery routine runs | ✅ verified |
+| Actually connecting to a machine | ✅ verified (xTool P3 over Wi-Fi; USB untested) |
+| Running a job / engraving | ✅ verified (xTool P3 cut jobs) |
+| Camera / auto-positioning & monitoring | ✅ verified (xTool P3) |
 
-The unverified rows are unverified because no machine was connected when this
-was written — not because they are known broken. **If you try any of them,
-please open an issue and say what happened.** That is the single most useful
-contribution to this repo.
+USB machine connections and other hardware models remain untested here — **if
+you try them, please open an issue and say what happened.** That is the single
+most useful contribution to this repo.
 
 ---
 
@@ -58,14 +60,17 @@ Packages:
 # Fedora
 sudo dnf install p7zip winetricks cabextract icoutils curl
 
-# Debian / Ubuntu
-sudo apt install p7zip-full winetricks cabextract icoutils curl
+# Debian / Ubuntu (use `p7zip-full` on older releases without `7zip`)
+sudo apt install 7zip winetricks cabextract curl
 
 # Arch
-sudo pacman -S p7zip winetricks cabextract icoutils curl
+sudo pacman -S p7zip winetricks cabextract curl
 ```
 
-`icoutils` is optional — without it you get a generic icon instead of xTool's.
+`install.sh` extracts the desktop icon via `7z` and `python3` (falling back to
+`icoutils` or ImageMagick if needed). `install.sh` also disables Wine's X11
+window-manager borders (`Decorated=N` in `HKCU\Software\Wine\X11 Driver`) so
+Electron's custom title bar does not collide with GNOME/Mutter decorations.
 
 ---
 
@@ -325,8 +330,7 @@ an unrelated project of the same short name — a cross-platform Xcode replaceme
 
 Most wanted:
 
-- Reports of the ⚠️ rows in [Status](#status) — whether a machine actually
-  connects, and whether jobs run.
+- Reports of USB connections or other machine models in [Status](#status).
 - Confirmation on other distros.
 - A narrower lower bound than 11.5, if one of 11.1–11.4 works.
 - Whether a newer Fedora Wine, once it lands, makes the download unnecessary.
