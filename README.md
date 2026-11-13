@@ -69,6 +69,9 @@ sudo pacman -S p7zip winetricks cabextract icoutils curl
 ```
 
 `icoutils` is optional — without it you get a generic icon instead of xTool's.
+`install.sh` also disables Wine's X11 window-manager borders (`Decorated=N` in
+`HKCU\Software\Wine\X11 Driver`) so Electron's custom title bar does not collide
+with GNOME/Mutter decorations.
 
 ---
 

@@ -299,6 +299,14 @@ mkdir -p "$(dirname "$PREFIX")"
 # Electron 36 expects to be running on Windows 10.
 "$WINE_ROOT/bin/winecfg" -v win10 >/dev/null 2>&1 || true
 
+# Electron renders its own custom frameless title bar. Letting the X11/XWayland
+# window manager also decorate the window causes GNOME/Mutter's header bar to
+# overlap the top bar when maximized and can crash the Wine/Electron process
+# when dragging the window by its title bar.
+"$WINE" reg add 'HKCU\Software\Wine\X11 Driver' /v Decorated /t REG_SZ /d N /f >/dev/null 2>&1 \
+	|| warn "could not disable Wine window manager decorations"
+"$WINE_ROOT/bin/wineserver" -w
+
 # A prefix with no fonts makes Chromium's font fallback recurse until the stack
 # is gone. This is required even on a Wine new enough to otherwise work.
 if [ ! -e "$PREFIX/drive_c/windows/Fonts/corefonts.installed" ]; then
